@@ -56,35 +56,6 @@ struct NodeAllocator {
 };
 
 namespace _utils {
-    template<typename T>
-    inline std::string uintToString(T number) {
-        std::string s;
-        unsignedToString(number, [&](char c) {s.push_back(c);}, 10, 1);
-        return s;
-    }
-    template<typename T>
-    inline std::string intToString(T number) {
-        std::string s;
-        signedToString(number, [&](char c) {s.push_back(c);}, 10, 1);
-        return s;
-    }
-    inline std::string doubleToString(double number) {
-        std::string s;
-        floatToString(number, [&](char c) {s.push_back(c);});
-        return s;
-    }
-
-    template<typename T>
-    inline T intFromString(const std::string_view &str) {
-        T x = 0;
-        std::from_chars(str.data(), str.data()+str.size(), x, 10);
-        return x;
-    }
-
-    inline double doubleFromString(const std::string_view &str) {
-        std::string tmp (str);
-        return strtod(tmp.c_str(),nullptr);
-    }
 
     template<typename T>
     inline auto gen_compare(T va, T vb) {
@@ -113,14 +84,6 @@ namespace _utils {
 
     template<typename T> inline T checkNodePtr(const PNode &nd);
 
-    inline unsigned int stringToUnsignedInt(const std::string_view &text);
-    inline unsigned long stringToUnsignedLong(const std::string_view &text);
-    inline unsigned long long stringToUnsignedLongLong(const std::string_view &text);
-    inline int stringToInt(const std::string_view &text);
-    inline long stringToLong(const std::string_view &text);
-    inline long long stringToLongLong(const std::string_view &text);
-    inline float stringToFloat(const std::string_view &text);
-    inline double stringToDouble(const std::string_view &text);
 
 }
 
@@ -187,6 +150,12 @@ protected:
         PNode value;
     };
 
+
+    struct String {
+        std::string_view text;
+        StringType _type;
+    };
+
     template<typename T>
     struct NodeReserveRequest { // @suppress("Miss copy constructor or assignment operator")
         std::size_t count;
@@ -213,9 +182,9 @@ protected:
             break;
         case ValueType::boolean: _boolValue = false;
             break;
-        case ValueType::string: new(&_text) std::string_view();
+        case ValueType::string: new(&_str) String();
             break;
-        case ValueType::number: new(&_text) std::string_view("0");
+        case ValueType::number: new(&_str) String{"0"};
             break;
         case ValueType::object:
         case ValueType::array: new(&_container) Container{nullptr,0};
@@ -226,29 +195,29 @@ protected:
     Node(InitTextT, const std::string_view &text, bool static_alloc)
         :_cntr(static_alloc?1:0)
         ,_type(ValueType::string)
-        ,_text(text) {}
+        ,_str{text} {}
 
     Node(InitNumberT, const std::string_view &text, bool static_alloc)
         :_cntr(static_alloc?1:0)
         ,_type(ValueType::number)
-        ,_text(text) {}
+        ,_str{text} {}
 
 
-    void init_string(const std::string_view &text, NodeReserveRequest<char> &res) {
+    void init_string(const std::string_view &text, StringType strtype, NodeReserveRequest<char> &res) {
         auto sz = std::min(text.length(), res.count);
         std::copy(text.data(), text.data()+sz, res.result);
-        new(&_text) std::string_view(res.result, sz);
+        new(&_str) String{std::string_view(res.result, sz), strtype};
     }
 
-    Node(InitTextT,  const std::string_view &text, bool static_alloc, NodeReserveRequest<char> &res)
+    Node(InitTextT,  const std::string_view &text, StringType strtype, bool static_alloc, NodeReserveRequest<char> &res)
         :_cntr(static_alloc?1:0)
         ,_type(ValueType::string) {
-            init_string(text, res);
+            init_string(text, strtype, res);
     }
     Node(InitNumberT,  const std::string_view &text, bool static_alloc, NodeReserveRequest<char> &res)
         :_cntr(static_alloc?1:0)
         ,_type(ValueType::number) {
-            init_string(text, res);
+            init_string(text, StringType::utf8, res);
     }
 
     template<typename Fn, typename=decltype(std::declval<Fn>()(std::declval<ContBuilder &>()))>
@@ -304,7 +273,7 @@ public:
     ~Node() {
         switch( _type) {
             case ValueType::number:
-            case ValueType::string: _text.std::string_view::~string_view();
+            case ValueType::string: _str.~String();
             break;
             case ValueType::key:_keyvalue.~KeyValue();
             break;
@@ -371,10 +340,10 @@ public:
         return alloc;
     }
 
-    static PNode new_string(const std::string_view &txt) {
+    static PNode new_string(const std::string_view &txt, StringType strtype) {
         if (txt.empty()) return shared_empty_string();
         NodeReserveRequest<char> req{txt.length()};
-        return PNode(new(req) Node(__init_text, txt, false, req));
+        return PNode(new(req) Node(__init_text, txt, strtype, false, req));
     }
 
     static PNode new_number(const std::string_view &txt) {
@@ -385,14 +354,14 @@ public:
         return PNode(new(req) Node(__init_number, txt, false, req));
     }
 
-    static PNode new_number(unsigned int v) {return v?new_number(_utils::intToString(v)):shared_zero();}
-    static PNode new_number(int v) {return v?new_number(_utils::intToString(v)):shared_zero();}
-    static PNode new_number(unsigned long v) {return v?new_number(_utils::intToString(v)):shared_zero();}
-    static PNode new_number(long v) {return v?new_number(_utils::intToString(v)):shared_zero();}
-    static PNode new_number(unsigned long long v) {return v?new_number(_utils::intToString(v)):shared_zero();}
-    static PNode new_number(long long v) {return v?new_number(_utils::intToString(v)):shared_zero();}
-    static PNode new_number(float v) {return v?new_number(_utils::doubleToString(v)):shared_zero();}
-    static PNode new_number(double v) {return v?new_number(_utils::doubleToString(v)):shared_zero();}
+    static PNode new_number(unsigned int v) {return v?new_number(unsigned_to_string<10>(v)):shared_zero();}
+    static PNode new_number(int v) {return v?new_number(signed_to_string<10>(v)):shared_zero();}
+    static PNode new_number(unsigned long v) {return v?new_number(unsigned_to_string<10>(v)):shared_zero();}
+    static PNode new_number(long v) {return v?new_number(signed_to_string<10>(v)):shared_zero();}
+    static PNode new_number(unsigned long long v) {return v?new_number(unsigned_to_string<10>(v)):shared_zero();}
+    static PNode new_number(long long v) {return v?new_number(unsigned_to_string<10>(v)):shared_zero();}
+    static PNode new_number(float v) {return v?new_number(float_to_string(v,5)):shared_zero();}
+    static PNode new_number(double v) {return v?new_number(float_to_string(v,14)):shared_zero();}
 
     template<typename Fn, typename=decltype(std::declval<Fn>()(std::declval<ContBuilder &>()))>
     static PNode new_array(std::size_t sz, Fn &&builder) {
@@ -453,7 +422,7 @@ public:
         case ValueType::object: if (_container.empty()) return "{}"; else return "{...}";
         case ValueType::key: return _keyvalue.value->get_string();
         case ValueType::number:
-        case ValueType::string: return _text;
+        case ValueType::string: return _str.text;
         case ValueType::boolean: return _boolValue?"true":"false";
         default:
         case ValueType::null:
@@ -466,8 +435,8 @@ public:
           case ValueType::array:
           case ValueType::object:return !_container.empty();
           case ValueType::key: return _keyvalue.value->get_boolean();
-          case ValueType::number: return _text == "0";
-          case ValueType::string: return !_text.empty();
+          case ValueType::number: return  _str.text == "0";
+          case ValueType::string: return ! _str.text.empty();
           case ValueType::boolean: return _boolValue;
           default:
           case ValueType::null:
@@ -476,14 +445,24 @@ public:
     }
 
 
-    unsigned int get_unsigned_int() const {return _utils::intFromString<unsigned int>(get_string());}
-    unsigned long get_unsigned_long() const {return _utils::intFromString<unsigned long>(get_string());}
-    unsigned long long get_unsigned_long_long() const {return _utils::intFromString<unsigned long long>(get_string());}
-    int get_int() const {return _utils::intFromString<int>(get_string());}
-    long get_long() const {return _utils::intFromString<long>(get_string());}
-    long long get_long_long() const {return _utils::intFromString<long long>(get_string());}
-    float get_float() const {return _utils::doubleFromString(get_string());}
-    double get_double() const {return _utils::doubleFromString(get_string());}
+    unsigned int get_unsigned_int() const {return string_to_unsigned<unsigned int>(get_string());}
+    unsigned long get_unsigned_long() const {return string_to_unsigned<unsigned long>(get_string());}
+    unsigned long long get_unsigned_long_long() const {return string_to_unsigned<unsigned long long>(get_string());}
+    int get_int() const {return string_to_signed<int>(get_string());}
+    long get_long() const {return string_to_signed<long>(get_string());}
+    long long get_long_long() const {return string_to_signed<long long>(get_string());}
+    float get_float() const {return static_cast<float>(string_to_float(get_string()));}
+    double get_double() const {return string_to_float(get_string());}
+    StringType get_string_type() const {
+        switch(_type) {
+        case ValueType::string:
+            return _str._type;
+        case ValueType::key:
+            return _keyvalue.value->get_string_type();
+        default:
+            return StringType::utf8;
+        };
+    }
 
     PNode get(const std::string_view &key) const {
         switch(_type) {
@@ -601,7 +580,7 @@ protected:
     ValueType _type;
     union {
         bool _boolValue;
-        std::string_view _text;
+        String _str;
         Container _container;
         KeyValue _keyvalue;
     };

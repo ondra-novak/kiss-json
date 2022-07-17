@@ -51,8 +51,14 @@ enum class NumberType {
 
 ///Defines merge behavior
 enum class Merge {
-    flat,
-    recursive
+    flat,     ///< merge only first level
+    recursive ///< merge all levels recursively
+};
+
+///Specifies how string is stored within JSOn object
+enum class StringType {
+    utf8,   ///<standard string in UTF-8.
+    binary,  ///<arbitrary binary data, which are serialized as BASE64
 };
 
 

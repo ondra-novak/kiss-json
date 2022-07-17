@@ -12,6 +12,7 @@
 #include <crtdbg.h>
 #endif
 
+#include "../base64.h"
 #include "../value.h"
 #include "../serializer.h"
 #include "../parser.h"
@@ -143,7 +144,7 @@ int testMain(bool showOutput) {
 	};
 	*/
 	tst.test("Parse.arrayEmpty","true") >> [](std::ostream &out) {
-		out << (Value::from_string("[]").is_copy_of(Value::array())?"true":"false");
+		out << (Value::from_string("[]").is_copy_of(Array())?"true":"false");
 	};
 	tst.test("Parse.arraySomeValues","10") >> [](std::ostream &out) {
 		Value v = Value::from_string("[1,20,0.30,4.5,32.4987,1.32e-18,-23,\"neco\",true,null]");
@@ -222,7 +223,7 @@ int testMain(bool showOutput) {
 		    {"frobla", 12.3},
 		    {"arte", true},
 		    {"name", "Azaxe"},
-		    {"data", Value::array{ 90,60, 90 }}
+		    {"data", Array{ 90,60, 90 }}
 		};
 		v.to_stream(out);
 	};
@@ -247,23 +248,23 @@ int testMain(bool showOutput) {
 	tst.test("Object.addSubarray", "{\"arte\":true,\"data\":[90,60,90],\"frobla\":12.3,\"kabrt\":123,\"name\":\"Azaxe\",\"sub\":[\"kiki\",\"kuku\",\"mio\",\"mao\",69,[\"bing\",\"bang\"]]}") >> [](std::ostream &out) {
 		Value v = Value::from_string("{\"arte\":true,\"data\":[90,60,90],\"frobla\":12.3,\"kabrt\":123,\"name\":\"Azaxe\"}");
         v.merge({
-            {"sub",Value::array{"kiki","kuku","mio","mao",69,
-                                Value::array{ "bing","bang" }
+            {"sub",Array{"kiki","kuku","mio","mao",69,
+                                Array{ "bing","bang" }
                         }}
             });
 		v.to_stream(out);
 	};
 	tst.test("Object.huge","hit") >> [](std::ostream &out) {
-	    Value o = Value::object(1000,[](std::size_t i) {
+	    Value o = Object(1000,[](std::size_t i) {
 	       return Value(Value(rand()).get_string(), i);
 	    });
 	    o.merge({{"5000","hit"}});
 		out << o["5000"].get_string();
 	};
 	tst.test("Object.huge.search-delete","hit{\"aaa\":10}10\"undefined\"\"undefined\"\"undefined\"") >> [](std::ostream &out) {
-		Value o = Value::object{{"aaa",10}};
+		Value o = Object{{"aaa",10}};
         o.merge({{"test",o}});
-		o.merge(Value::object(1000,[](std::size_t i) {
+		o.merge(Object(1000,[](std::size_t i) {
 	           return Value(Value(rand()).get_string(), i);
 	        }));
 		o.merge({{"120","hit"}});
@@ -280,16 +281,16 @@ int testMain(bool showOutput) {
 		out << o["aaa"].to_string();
 	};
 
-	tst.test("Array.create","[\"hi\",\"hola\",1,2,3,5,8,13,21,7.557941564e+27]") >> [](std::ostream &out){
-		Value a(Value::array{"hi","hola"});
+	tst.test("Array.create","[\"hi\",\"hola\",1,2,3,5,8,13,21,7.55794156398981e+27]") >> [](std::ostream &out){
+		Value a(Array{"hi","hola"});
 		a.append({1,2,3,5,8,13,21});
 		a.push(7557941563989796531369787923.2568971236);
 		a.to_stream(out);
 	};
 
 	tst.test("Array.nocycle","[1,2,3,[\"x\",[1,2,3]]]") >> [](std::ostream &out){
-        Value a (Value::array{1,2,3});
-        Value b (Value::array{"x",a});
+        Value a (Array{1,2,3});
+        Value b (Array{"x",a});
         a.push(b);
         a.to_stream(out);
 	};

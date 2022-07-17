@@ -569,9 +569,9 @@ inline void Parser::push_container(bool is_object) {
 inline Value Parser::top_container() {
     Range<decltype(_vstack)::const_iterator> r(_vstack.begin()+_items.back().first, _vstack.end());
     if (_items.back().second) {
-        return Value::object(r, [](const Value &v){return v;});
+        return Object(r, [](const Value &v){return v;});
     } else {
-        return Value::array(r);
+        return Array(r);
     }
 }
 

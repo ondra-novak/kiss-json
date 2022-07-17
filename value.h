@@ -16,6 +16,9 @@
 namespace kjson {
 
 class Value;
+class Object;
+class Array;
+class Binary;
 
 using KeyValue = std::pair<std::string_view, Value>;
 
@@ -46,9 +49,9 @@ public:
     ///Construct boolean value
     Value(bool b):_ptr(Node::shared_boolean(b)) {}
     ///Construct string value (must exists, otherwise compiler chooses bool)
-    Value(const char *c):_ptr(Node::new_string(std::string_view(c))) {}
+    Value(const char *c):_ptr(Node::new_string(std::string_view(c), StringType::utf8)) {}
     ///Construct string value
-    Value(const std::string_view &a):_ptr(Node::new_string(a)) {}
+    Value(const std::string_view &a):_ptr(Node::new_string(a, StringType::utf8)) {}
     ///Construct a number
     Value(int a):_ptr(Node::new_number(a)) {}
     ///Construct a number
@@ -66,142 +69,16 @@ public:
     ///Construct a number
     Value(double a):_ptr(Node::new_number(a)) {}
 
-    ///Helper class to construct objects
-    class object {
-    public:
-        ///construct empty object
-        object():_ptr(Node::shared_empty_object()) {}
 
-        ///construct from initializer list definition
-        object(const std::initializer_list<KeyValue > &obj)
-            :_ptr(Node::new_object(obj.size(), [obj](ContBuilder &bld) {
-            for (const auto &itm: obj) {
-                bld.push_back(itm.second.get_handle()->set_key(itm.first));
-            }
-            std::sort(bld.begin(),bld.end(),Node::KeyOrder());
-        })){}
-        ///construct object from container of values with ability to filter and transfer items
-        /**
-         * @param c source container
-         * @param fn function which is responsible to convert item to Value. All
-         *           undefined results are not stored. The function must also bind
-         *           keys to values. To do this, use Value(key, value) constructor
-         */
-        template<typename Container, typename Fn,
-            typename = decltype(std::begin(std::declval<const Container &>()) == std::end(std::declval<const Container &>())),
-            typename = decltype(Value(std::declval<Fn>()(*std::begin(std::declval<const Container &>()))))>
-        object(const Container &c, Fn &&fn):
-            _ptr(Node::new_object(std::distance(std::begin(c), std::end(c)),
-                                 [&c, &fn](ContBuilder &b) {
-               for(const auto &x : c) {
-                   Value v = fn(x);
-                   if (v.defined()) {
-                       b.push_back(Value(fn(x)).get_handle());
-                   }
-               }
-               std::sort(b.begin(),b.end(),Node::KeyOrder());
-        })){}
-
-        template<typename Fn>
-        object(std::size_t count, Fn &&fn)
-            :_ptr(Node::new_object(count, [&](ContBuilder &bld){
-                for (std::size_t i = 0; i < count; i++) {
-                    Value v = fn(i);
-                    if (!v.defined()) break;
-                    bld.push_back(v.get_handle());
-                }
-                std::sort(bld.begin(),bld.end(),Node::KeyOrder());
-        })) {}
-
-
-        static object from_value(const Value &v) {
-            return object(v.get_handle());
-        }
-
-    protected:
-        explicit object(const PNode &ptr):_ptr(ptr) {}
-
-        friend class Value;
-        PNode _ptr;
-    };
-
-    ///Helper class to construct arrays
-    class array {
-    public:
-        ///construct empty array
-        array():_ptr(Node::shared_empty_array()) {}
-        ///construct array from initialized list definition
-        array(const std::initializer_list<Value> &array)
-            :_ptr(Node::new_array(array.size(), [array](ContBuilder &bld) {
-            for (const Value &v : array) {
-                bld.push_back(v.get_handle());
-            }
-         })){}
-
-        explicit array(const Value &v):_ptr(v.get_handle()) {}
-
-        ///construct array from container of values
-        template<typename Container,
-            typename = decltype(std::begin(std::declval<const Container &>()) == std::end(std::declval<const Container &>())),
-            typename = decltype(Value(*std::begin(std::declval<const Container &>())))>
-        explicit array(const Container &c):
-            _ptr(Node::new_array(std::distance(std::begin(c), std::end(c)),
-                                 [&c](ContBuilder &b) {
-               for(const auto &x : c) {
-                   b.push_back(Value(x).get_handle());
-               }
-        })){}
-        ///construct array from container of values with ability to filter and transfer items
-        /**
-         * @param c source container
-         * @param fn function which is responsible to convert item to Value. All
-         *           undefined results are not stored
-         */
-        template<typename Container, typename Fn,
-            typename = decltype(std::begin(std::declval<const Container &>()) == std::end(std::declval<const Container &>())),
-            typename = decltype(Value(std::declval<Fn>()(*std::begin(std::declval<const Container &>()))))>
-        array(const Container &c, Fn &&fn):
-            _ptr(Node::new_array(std::distance(std::begin(c), std::end(c)),
-                                 [&c, &fn](ContBuilder &b) {
-               for(const auto &x : c) {
-                   Value v = fn(x);
-                   if (v.defined()) {
-                       b.push_back(Value(fn(x)).get_handle());
-                   }
-               }
-        })){}
-
-        template<typename Fn>
-        array(std::size_t count, Fn &&fn)
-            :_ptr(Node::new_array(count, [&](ContBuilder &bld){
-                for (std::size_t i = 0; i < count; i++) {
-                    Value v = fn(i);
-                    if (!v.defined()) break;
-                    bld.push_back(v.get_handle());
-                }
-        })) {}
-
-        static array from_value(const Value &v) {
-            return array(v.get_handle());
-        }
-
-    protected:
-        explicit array(const PNode &ptr):_ptr(ptr) {}
-        friend class Value;
-        PNode _ptr;
-    };
-
-
-    ///Construct value using helper object class
-    Value(const object &obj):_ptr(obj._ptr) {}
-    ///Construct value using helper array class
-    Value(const array &arr):_ptr(arr._ptr) {}
     ///Construct object directly
-    Value(const std::initializer_list<KeyValue > &obj):Value(object(obj)) {}
+    Value(const std::initializer_list<KeyValue > &obj);
     ///Construct value with bound key
     Value(const std::string_view &key, const Value &val):_ptr(val.get_handle()->set_key(key)) {}
     ///Construct value, unbind any bound key
     Value(std::nullptr_t, const Value &val):_ptr(val.get_handle()->unset_key()) {}
+
+    ///Construct string - allows to specify string type (for example to store binary data)
+    Value(const std::string_view &a, StringType type);
 
     bool operator==(const Value &other) const {return _ptr->compare(*other._ptr) == 0;}
     bool operator!=(const Value &other) const {return _ptr->compare(*other._ptr) != 0;}
@@ -230,6 +107,17 @@ public:
     auto get_double() const {return _ptr->get_double();}
     ///Get boolean value
     auto get_bool() const {return _ptr->get_boolean();}
+    ///Retrieve binary value
+    /**
+     * It is expected string field encoded as BASE64. Function returns Binary object with decoded
+     * binary value. You can use Binary::get_string to access binary data.
+     *
+     * If the value is internally in binary state, no decoding is done, value is just copied
+     * to Binary object. You can stull use Binary::get_string to access binary data
+     *
+     * @return
+     */
+    Binary get_binary() const;
     ///Returns true, if the value is defined, false if undefined
     /**
      * @retval true value is defined
@@ -270,6 +158,16 @@ public:
     auto is_array() const {return _ptr->get_type() == ValueType::array;}
     ///Returns true if the value is string
     auto is_string() const {return _ptr->get_type() == ValueType::string;}
+    ///Returns true if the value is string and it is binary
+    /**
+     * @retval true string is stored in binary form, which does mean it will be encoded to BASE64
+     * @retval false string is storead as ascii/utf-8 string,
+     *
+     * @note Parser doesn't automatically decode binary strings, so if the given value is expected
+     * as binary string, it can still emit non-binary state until it is decoded by the function
+     * get_binary()
+     */
+    auto is_binary_string() const {return _ptr->get_string_type() != StringType::utf8;}
     ///Returns true if the value is number
     auto is_number() const {return _ptr->get_type() == ValueType::number;}
     ///Returns true if the value is boolean
@@ -349,17 +247,13 @@ public:
      * for this option is to allow specify empty object to able merge JSON file
      * which doesn't support 'undefined' value
      */
-    void merge(const object &obj, Merge merge = Merge::flat, const Value &unset_item = Value());
+    void merge(const Object &obj, Merge merge = Merge::flat, const Value &unset_item = Value());
 
     template<typename Fn>
-    Value map(Fn &&fn) const {
-        return Value(array::from_value(*this), std::forward<Fn>(fn));
-    }
+    Value map(Fn &&fn) const;
 
     template<typename Fn>
-    Value map_to_object(Fn &&fn) const {
-        return Value(object::from_value(*this), std::forward<Fn>(fn));
-    }
+    Value map_object(Fn &&fn) const;
 
     template<typename Fn, typename T>
     T reduce(Fn &&fn, T &&initial) const {
@@ -399,7 +293,7 @@ public:
 
     void push(const Value &item);
 
-    void append(const array &arr);
+    void append(const Array &arr);
 
     Value slice(std::ptrdiff_t from, std::ptrdiff_t to) const;
 
@@ -435,6 +329,7 @@ public:
 
 protected:
     PNode _ptr;
+
 };
 
 class Value::iterator {
@@ -480,6 +375,178 @@ protected:
     mutable Value _tmp;
 };
 
+///Helper class to construct objects
+class Object: public Value {
+public:
+    ///construct empty object
+    Object():Value(Node::shared_empty_object()) {}
+
+    ///construct from initializer list definition
+    Object(const std::initializer_list<KeyValue > &obj)
+        :Value(Node::new_object(obj.size(), [obj](ContBuilder &bld) {
+        for (const auto &itm: obj) {
+            bld.push_back(itm.second.get_handle()->set_key(itm.first));
+        }
+        std::sort(bld.begin(),bld.end(),Node::KeyOrder());
+    })){}
+    ///construct object from container of values with ability to filter and transfer items
+    /**
+     * @param c source container
+     * @param fn function which is responsible to convert item to Value. All
+     *           undefined results are not stored. The function must also bind
+     *           keys to values. To do this, use Value(key, value) constructor
+     */
+    template<typename Container, typename Fn,
+        typename = decltype(std::begin(std::declval<const Container &>()) == std::end(std::declval<const Container &>())),
+        typename = decltype(Value(std::declval<Fn>()(*std::begin(std::declval<const Container &>()))))>
+    Object(const Container &c, Fn &&fn):
+        Value(Node::new_object(std::distance(std::begin(c), std::end(c)),
+                             [&c, &fn](ContBuilder &b) {
+           for(const auto &x : c) {
+               Value v = fn(x);
+               if (v.defined()) {
+                   b.push_back(Value(fn(x)).get_handle());
+               }
+           }
+           std::sort(b.begin(),b.end(),Node::KeyOrder());
+    })){}
+
+    template<typename Fn>
+    Object(std::size_t count, Fn &&fn)
+        :Value(Node::new_object(count, [&](ContBuilder &bld){
+            for (std::size_t i = 0; i < count; i++) {
+                Value v = fn(i);
+                if (!v.defined()) break;
+                bld.push_back(v.get_handle());
+            }
+            std::sort(bld.begin(),bld.end(),Node::KeyOrder());
+    })) {}
+
+
+    static Object from_value(const Value &v) {
+        return Object(v.get_handle());
+    }
+
+protected:
+    explicit Object(const PNode &ptr):Value(ptr) {}
+
+};
+
+///Helper class to construct arrays
+class Array: public Value {
+public:
+    ///construct empty array
+    Array():Value(Node::shared_empty_array()) {}
+    ///construct array from initialized list definition
+    Array(const std::initializer_list<Value> &array)
+        :Value(Node::new_array(array.size(), [array](ContBuilder &bld) {
+        for (const Value &v : array) {
+            bld.push_back(v.get_handle());
+        }
+     })){}
+
+
+    ///construct array from container of values
+    template<typename Container,
+        typename = decltype(std::begin(std::declval<const Container &>()) == std::end(std::declval<const Container &>())),
+        typename = decltype(Value(*std::begin(std::declval<const Container &>())))>
+    explicit Array(const Container &c)
+        :Value(Node::new_array(std::distance(std::begin(c), std::end(c)),
+                             [&c](ContBuilder &b) {
+           for(const auto &x : c) {
+               b.push_back(Value(x).get_handle());
+           }
+    })){}
+    ///construct array from container of values with ability to filter and transfer items
+    /**
+     * @param c source container
+     * @param fn function which is responsible to convert item to Value. All
+     *           undefined results are not stored
+     */
+    template<typename Container, typename Fn,
+        typename = decltype(std::begin(std::declval<const Container &>()) == std::end(std::declval<const Container &>())),
+        typename = decltype(Value(std::declval<Fn>()(*std::begin(std::declval<const Container &>()))))>
+    Array(const Container &c, Fn &&fn)
+        :Value(Node::new_array(std::distance(std::begin(c), std::end(c)),
+                             [&c, &fn](ContBuilder &b) {
+           for(const auto &x : c) {
+               Value v = fn(x);
+               if (v.defined()) {
+                   b.push_back(Value(fn(x)).get_handle());
+               }
+           }
+    })){}
+
+    template<typename Fn>
+    Array(std::size_t count, Fn &&fn)
+        :Value(Node::new_array(count, [&](ContBuilder &bld){
+            for (std::size_t i = 0; i < count; i++) {
+                Value v = fn(i);
+                if (!v.defined()) break;
+                bld.push_back(v.get_handle());
+            }
+    })) {}
+
+    static Array from_value(const Value &v) {
+        return Array(v.get_handle());
+    }
+
+protected:
+    explicit Array(const PNode &ptr):Value(ptr) {}
+};
+
+
+
+///Helps to work with binary values.
+/**
+ * Binary strings are stored as BASE64 encoded string.
+ *
+ * To obtain this object from JSON, call Value::get_binary();
+ *
+ * You can also use this object to construct binary value from the string
+ */
+class Binary: public Value {
+public:
+    ///Construct binary value.
+    /**
+     * @param binary_data binary string (unlimited binary data)
+     *
+     * Because Binary inherits Value, the instance can be used anywhere the Value is expected
+     */
+    Binary(const std::string_view &binary_data)
+        :Value(binary_data, StringType::binary) {}
+
+    ///Constructs binary from a Value
+    /**
+     * @param v value object. If the value is utf-8 string, it is expected, that binary value is
+     * encoded as BASE64 data. So decoding is performed.
+     *
+     * @return Binary object
+     *
+     * @note You can also use Value::get_binary();
+     */
+    static Binary from_value(const Value &v) {
+        if (v.is_string()) {
+            if (v.is_binary_string()) {
+                return Binary(v);
+            } else {
+                std::string s;
+                base64decode(v.get_string(), [&](char c){s.push_back(c);});
+                return Binary(s);
+            }
+        } else {
+            throw std::bad_cast();
+        }
+    }
+protected:
+    explicit Binary(const Value &v):Value(v) {}
+};
+
+
+inline Binary Value::get_binary() const {
+    return Binary::from_value(*this);
+}
+
 }
 
 template<>
@@ -504,14 +571,14 @@ inline kjson::Value::reverse_iterator kjson::Value::rend() const {
     return reverse_iterator(iterator(_ptr, -1));
 }
 
-inline void kjson::Value::merge(const object &obj, Merge merge, const Value &unset_item) {
-    Value src(is_object()?Value(nullptr,*this):Value(Value::object()));
+inline void kjson::Value::merge(const Object &obj, Merge merge, const Value &unset_item) {
+    Value src(is_object()?Value(nullptr,*this):Value(Object()));
     Value diff(obj);
 
     auto get_merged = [&](const Value &src, const Value &diff) {
         if (diff.is_object() && merge == Merge::recursive) {
             Value x(src);
-            x.merge(object::from_value(diff), merge, unset_item);
+            x.merge(Object::from_value(diff), merge, unset_item);
             return Value(src.get_key(),x);
         } else {
             return diff;
@@ -528,7 +595,7 @@ inline void kjson::Value::merge(const object &obj, Merge merge, const Value &uns
                 ++iter1;
             } else if (kc>0) {
                 if (!iter2->is_copy_of(unset_item)) {
-                    bld.push_back(get_merged(object(), *iter2).get_handle());
+                    bld.push_back(get_merged(Object(), *iter2).get_handle());
                 }
                 ++iter2;
             } else if (iter2->is_copy_of(unset_item)) {
@@ -546,14 +613,14 @@ inline void kjson::Value::merge(const object &obj, Merge merge, const Value &uns
         }
         while (iter2 != end2) {
             if (!iter2->is_copy_of(unset_item)) {
-                bld.push_back(get_merged(object(), *iter2).get_handle());
+                bld.push_back(get_merged(Object(), *iter2).get_handle());
             }
             ++iter2;
         }
     });
 }
 
-inline void kjson::Value::append(const array &arr) {
+inline void kjson::Value::append(const Array &arr) {
     std::size_t sz = size() + Value(arr).size();
     _ptr = Node::new_array(sz, [&](ContBuilder &bld){
         for (const Value &x : *this) {
@@ -575,6 +642,10 @@ inline void kjson::Value::push(const Value &x) {
     });
 }
 
+inline kjson::Value kjson::Value::slice(std::ptrdiff_t from, std::ptrdiff_t to) const {
+    return Value(); //todo
+}
+
 kjson::Value kjson::Value::flatten() const {
     std::size_t sz = reduce([](std::size_t n, const Value &v){
         if (v.is_container()) return n+v.size();
@@ -594,9 +665,19 @@ kjson::Value kjson::Value::flatten() const {
     }));
 }
 
+template<typename Fn>
+inline kjson::Value kjson::Value::map(Fn &&fn) const {
+    return Array(Array::from_value(*this), std::forward<Fn>(fn));
+}
+
+template<typename Fn>
+inline kjson::Value kjson::Value::map_object(Fn &&fn) const {
+    return Object(Object::from_value(*this), std::forward<Fn>(fn));
+
+}
 
 
-
-
+inline kjson::Value::Value(const std::initializer_list<KeyValue > &obj)
+    :Value(Object(obj)) {}
 
 #endif /* KISSJSON_VALUE_H_ */

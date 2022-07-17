@@ -9,6 +9,7 @@
 #define KISSJSON_SERIALIZER_H_
 
 #include <array>
+#include "base64.h"
 #include "value.h"
 
 namespace kjson {
@@ -42,6 +43,13 @@ protected:
         string_hex_4,
         string_hex_5,
         string_hex_6,
+        binary_base64_1,
+        binary_base64_2,
+        binary_base64_3,
+        binary_base64_4,
+        binary_base64_trailer1,
+        binary_base64_trailer2,
+        binary_base64_end,
         begin_key,
     };
 
@@ -54,6 +62,7 @@ protected:
     std::string_view::iterator _text_iter = nullptr;
     int _h = 0, _sgt = 0;
     bool _key_finished = false;
+    const Base64Table &b64t = Base64Table::get_default_table();
 
     int read_unicode(int c);
     static int hex_char(int c);
@@ -82,7 +91,7 @@ inline int Serializer::get_next() {
             case ValueType::string:
                 _text = _v.get_string();
                 _text_iter = _text.begin();
-                _state = State::string;
+                _state = _v.is_binary_string()?State::binary_base64_1:State::string;
                 return '"';
             case ValueType::number:
                 _text = _v.get_string();
@@ -226,6 +235,59 @@ inline int Serializer::get_next() {
                 }
                 return ',';
             }
+        }
+        case State::binary_base64_trailer1:
+            _state = State::binary_base64_trailer2;
+            return '=';
+
+        case State::binary_base64_trailer2:
+            _state = State::binary_base64_end;
+            return '=';
+
+        case State::binary_base64_end:
+            _state = State::finish;
+            return '"';
+
+
+        case State::binary_base64_1:
+            if (_text_iter == _text.end()) {
+                _state = State::finish;
+                return '"';
+            } else {
+                int c = static_cast<unsigned char>(*_text_iter);
+                _state = State::binary_base64_2;
+                return b64t.charset[c>>2];
+            }
+
+        case State::binary_base64_2: {
+            int c = static_cast<unsigned char>(*_text_iter);
+            ++_text_iter;
+            if (_text_iter == _text.end()) {
+                _state = State::binary_base64_trailer1;
+                return b64t.charset[(c<<4) & 0x3F];
+            } else {
+                int d = static_cast<unsigned char>(*_text_iter);
+                _state = State::binary_base64_3;
+                return b64t.charset[((c<<4)|(d>>4)) & 0x3F];
+            }
+        }
+        case State::binary_base64_3: {
+            int c = static_cast<unsigned char>(*_text_iter);
+            ++_text_iter;
+            if (_text_iter == _text.end()) {
+                _state = State::binary_base64_trailer2;
+                return b64t.charset[(c<<2) & 0x3F];
+            } else {
+                int d = static_cast<unsigned char>(*_text_iter);
+                _state = State::binary_base64_4;
+                return b64t.charset[((c<<2)|(d>>6)) & 0x3F];
+            }
+        }
+        case State::binary_base64_4:{
+            int c = static_cast<unsigned char>(*_text_iter);
+            ++_text_iter;
+            _state = State::binary_base64_1;
+            return b64t.charset[c & 0x3F];
         }
 
     }
