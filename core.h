@@ -10,16 +10,17 @@
 
 #include "number2str.h"
 #include "enums.h"
-
 #include <atomic>
 #include <string_view>
 #include <algorithm>
 #include <charconv>
+#include "user_defined_core.h"
 
 
 namespace kjson {
 
 class Node;
+class Value;
 
 class PNode {
 public:
@@ -115,22 +116,31 @@ protected:
 };
 
 
+struct SliceInfo {
+    PNode owner;
+    std::size_t offset;
+    std::size_t size;
+};
+
 class Node {
 protected:
 
     class Container {
     public:
-        Container():_items(0), _count(0) {}
-        Container(PNode *buff):_items(buff), _count(0) {}
-        Container(PNode *items, std::size_t count): _items(items), _count(count) {}
+        Container():_items(0), _count(0),_owner(nullptr) {}
+        Container(PNode *buff):_items(buff), _count(0),_owner(nullptr) {}
+        Container(PNode *items, std::size_t count): _items(items), _count(count),_owner(nullptr) {}
+        Container(PNode owner, PNode *items, std::size_t count):_items(items), _count(count), _owner(owner) {}
         Container(const Container &other) = delete;
-        Container(Container &&other):_items(other._items), _count(other._count) {
+        Container(Container &&other):_items(other._items), _count(other._count),_owner(std::move(_owner)) {
             other._items = 0;;
             other._count = 0;
         }
         Container &operator=(const Container &other) = delete;
         ~Container() {
-            for (std::size_t i = 0; i < _count; i++) _items[i].~PNode();
+            if (_owner == nullptr) {
+                for (std::size_t i = 0; i < _count; i++) _items[i].~PNode();
+            }
         }
         const PNode &operator[](std::size_t x) const {return _items[x];}
         std::size_t size() const {return _count;}
@@ -140,9 +150,12 @@ protected:
         PNode *begin() const {return _items;}
         PNode *end() const {return _items+_count;}
 
+        PNode get_owner() const {return _owner;}
+
     protected:
         PNode *_items;
         std::size_t _count;
+        PNode _owner;       ///<if this pointer is set, container is actually slice of different array
     };
 
     struct KeyValue {
@@ -220,6 +233,16 @@ protected:
             init_string(text, StringType::utf8, res);
     }
 
+    ///create slice of other array or object - owner target is not container, creates empty array
+    Node(const SliceInfo &slice)
+        :_cntr(0)
+        ,_type(ValueType::array) {
+        auto target = slice.owner;
+        auto offset = std::min(target->size(),slice.offset);
+        auto size = std::min(target->size() - slice.offset, slice.size);
+        new (&_container) Container(target, target->_container.begin()+offset, size);
+    }
+
     template<typename Fn, typename=decltype(std::declval<Fn>()(std::declval<ContBuilder &>()))>
     void init_container(Fn &&builder, NodeReserveRequest<PNode> &res) {
         ContBuilder bld(res.result, res.count);
@@ -251,6 +274,16 @@ protected:
     }
 
 
+    Node(const UserDefinedValueTypeDesc &user_type, void *args, NodeReserveRequest<char> &res)
+        :_cntr(0)
+        ,_type(ValueType::user_defined)
+        ,_userdef{user_type, res.result, res.count} {
+
+            if (_userdef.type_desc.init)
+                _userdef.type_desc.init(_userdef, args);
+        }
+
+
     Node(const Node &) = delete;
     Node &operator=(const Node &) = delete;
 
@@ -280,6 +313,12 @@ public:
             case ValueType::object:
             case ValueType::array:
                 _container.~Container();
+                break;
+            case ValueType::user_defined:
+                if (_userdef.type_desc.deinit) {
+                    _userdef.type_desc.deinit(_userdef);
+                }
+                _userdef.~UserDefinedValue();
                 break;
             default:
                 break;
@@ -377,6 +416,14 @@ public:
         return PNode(new(req) Node(__init_object,std::forward<Fn>(builder),false,req));
     }
 
+    static PNode new_slice(const SliceInfo &slc) {
+        return PNode(new Node(slc));
+    }
+
+
+    static PNode new_user_value(const UserDefinedValueTypeDesc &type,  void *v);
+
+
     PNode set_key(const std::string_view &key) const {
 
         static auto new_key = [] (const std::string_view &key,  PNode &&target) -> PNode {
@@ -424,6 +471,7 @@ public:
         case ValueType::number:
         case ValueType::string: return _str.text;
         case ValueType::boolean: return _boolValue?"true":"false";
+        case ValueType::user_defined: return _userdef.type_desc.get_string?_userdef.type_desc.get_string(_userdef):_userdef.type_desc.get_type_name();
         default:
         case ValueType::null:
         case ValueType::undefined: return "";
@@ -464,6 +512,36 @@ public:
         };
     }
 
+    const UserDefinedValue *get_user_defined_content() const {
+        switch(_type) {
+        case ValueType::user_defined:
+            return &_userdef;
+        case ValueType::key:
+            return _keyvalue.value->get_user_defined_content();
+        default:
+            return nullptr;
+        };
+    }
+
+    SliceInfo get_slice_info() const {
+        switch (_type) {
+        case ValueType::array: {
+            PNode owner = _container.get_owner();
+            if (owner != nullptr) {
+                return {owner, static_cast<std::size_t>(_container.begin() - owner->_container.begin()), _container.size()};
+            } else {
+                return {this, 0, _container.size()};
+            }
+        }
+        case ValueType::key: {
+            return _keyvalue.value->get_slice_info();
+        }
+        default:
+            return {this, 0, 0};
+        }
+    }
+
+
     PNode get(const std::string_view &key) const {
         switch(_type) {
         case ValueType::array: {
@@ -478,6 +556,11 @@ public:
             } break;
         case ValueType::key:
             return _keyvalue.value->get(key);
+        case ValueType::user_defined: {
+            PNode nd = _userdef.type_desc.find_by_key?_userdef.type_desc.find_by_key(_userdef,key):PNode(nullptr);
+            return nd == nullptr?shared_undefined():nd;
+        }
+
         default:
             return shared_undefined();
         }
@@ -490,6 +573,10 @@ public:
             return index>=_container.size()?shared_undefined():_container[index];
         case ValueType::key:
             return _keyvalue.value->get(index);
+        case ValueType::user_defined: {
+            PNode nd = _userdef.type_desc.find_by_index?_userdef.type_desc.find_by_index(_userdef, index):PNode(nullptr);
+            return nd == nullptr?shared_undefined():nd;
+        }
         default:
             return shared_undefined();
         }
@@ -502,6 +589,8 @@ public:
             return _container.size();
         case ValueType::key:
             return _keyvalue.value->size();
+        case ValueType::user_defined:
+            return _userdef.type_desc.get_conatiner_size?_userdef.type_desc.get_conatiner_size(_userdef):0;
         default:
             return 0;
         }
@@ -583,6 +672,7 @@ protected:
         String _str;
         Container _container;
         KeyValue _keyvalue;
+        UserDefinedValue _userdef;
     };
 };
 
@@ -631,6 +721,12 @@ inline bool PNode::operator ==(const PNode &other) const {
 
 inline bool PNode::operator !=(const PNode &other) const {
     return _ptr != other._ptr;
+}
+
+PNode Node::new_user_value(const UserDefinedValueTypeDesc &type, void *args) {
+    NodeReserveRequest<char> req;
+    req.count = type.get_required_size?type.get_required_size(args):0;
+    return PNode(new(req) Node(type, args, req));
 }
 
 

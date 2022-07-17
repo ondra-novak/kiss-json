@@ -68,7 +68,13 @@ public:
     Value(float a):_ptr(Node::new_number(a)) {}
     ///Construct a number
     Value(double a):_ptr(Node::new_number(a)) {}
-
+    ///Construct user defined value
+    /**
+     * @param user_type reference to user defined type descriptor
+     * @param args optional arguments passed to the constructor
+     */
+    Value(const UserDefinedValueTypeDesc &user_type,  void *args)
+        :_ptr(Node::new_user_value(user_type, args)) {}
 
     ///Construct object directly
     Value(const std::initializer_list<KeyValue > &obj);
@@ -78,7 +84,8 @@ public:
     Value(std::nullptr_t, const Value &val):_ptr(val.get_handle()->unset_key()) {}
 
     ///Construct string - allows to specify string type (for example to store binary data)
-    Value(const std::string_view &a, StringType type);
+    Value(const std::string_view &a, StringType type)
+        :_ptr(Node::new_string(a, type)) {}
 
     bool operator==(const Value &other) const {return _ptr->compare(*other._ptr) == 0;}
     bool operator!=(const Value &other) const {return _ptr->compare(*other._ptr) != 0;}
@@ -87,6 +94,8 @@ public:
     bool operator>=(const Value &other) const {return _ptr->compare(*other._ptr) >= 0;}
     bool operator<=(const Value &other) const {return _ptr->compare(*other._ptr) <= 0;}
 
+    ///Retrieves value type
+    auto get_type() const {return _ptr->get_type();}
     ///Get string value
     auto get_string() const {return _ptr->get_string();}
     ///Get numeric value
@@ -107,6 +116,9 @@ public:
     auto get_double() const {return _ptr->get_double();}
     ///Get boolean value
     auto get_bool() const {return _ptr->get_boolean();}
+    ///Retrieve bound key
+    auto get_key() const {return _ptr->get_key();}
+
     ///Retrieve binary value
     /**
      * It is expected string field encoded as BASE64. Function returns Binary object with decoded
@@ -118,11 +130,49 @@ public:
      * @return
      */
     Binary get_binary() const;
+
+    ///Retrieves value as an array
+    /**
+     * This is just a cast, which allows to reinterpret content of the value
+     * as an array. However, this works only for containers, so for arrays
+     * and objects (objects can act as array of key-value items)
+     *
+     * Some functions states that expects exactly Array as argument, so this
+     * is way how to convert Value to Array
+     * @return Array instance
+     */
+    Array get_array() const;
+
+
+    ///Retrieves value as an object
+    /**
+     * This is just a cast, which allows to reinterpret content of the value
+     * as an object. However the most functions that exception object as input
+     * will fails if passed value is not object. So only objects can
+     * be converted from Value to Object. Note, there is no check, no error, if
+     * you try to convert something else. Non-container values looks like
+     * empty container
+     *
+     * @return Object instance
+     */
+
+    Object get_object() const;
+
+    ///Retrieves content of user defined value
+    /**
+     * @return pointer to user defined value content. Returns nullptr for all non-user-defined
+     * values.
+     */
+    const UserDefinedValue *get_user_defined_content() const {
+        return _ptr->get_user_defined_content();
+    }
+
     ///Returns true, if the value is defined, false if undefined
     /**
      * @retval true value is defined
      * @retval false value is undefined
      */
+
     auto defined() const {return _ptr->get_type() != ValueType::undefined;}
     ///Returns true, if the value is defined and contains different value than null
     /**
@@ -134,9 +184,6 @@ public:
         return t != ValueType::undefined && t != ValueType::null;
     }
 
-    auto get_key() const {return _ptr->get_key();}
-    ///Retrieves value type
-    auto get_type() const {return _ptr->get_type();}
     ///Returns true, if the value is null
     /**
      * @retval true value is null
@@ -172,6 +219,8 @@ public:
     auto is_number() const {return _ptr->get_type() == ValueType::number;}
     ///Returns true if the value is boolean
     auto is_bool() const {return _ptr->get_type() == ValueType::boolean;}
+    ///Returns true if the value is user defined
+    auto is_user_defined() const {return _ptr->get_type() == ValueType::user_defined;}
     ///Returns true if the value is copy of other value
     /**
      * This is faster comparison for a value which was created as copy of other
@@ -211,15 +260,44 @@ public:
      *
      */
     auto is_copy_of(const Value &other) const {return _ptr->unset_key() == other._ptr->unset_key();}
-
+    ///Retrieve size of container
+    /**
+     * Container is object or array
+     * @return count of items in containers, returns 0 for non-container value
+     */
+    std::size_t size() const {return _ptr->size();}
+    ///Returns true when container is empty
+    bool empty() const {return _ptr->empty();}
+    ///Binds a key
+    /**
+     * binds key to value
+     * @param key key text
+     *
+     * @note if there is already bound key, it is rewritten
+     */
     void bind_key(const std::string_view &key) {_ptr = _ptr->set_key(key);}
+    ///Removes the key from the value
+    /**
+     * Bound key can sometimes cause an issues, for exmple if you accessing internals directly.
+     * This function removes key from the value.
+     */
     void unbind_key() {_ptr = _ptr->unset_key();}
 
-    std::size_t size() const {return _ptr->size();}
-
-    bool empty() const {return _ptr->empty();}
+    ///Access to item by index in a container
+    /**
+     * @param idx index to item, items are zero-base indexed. This applied for both
+     * object and arrays. Objects are always ordered alphabetically by the key. Requesting
+     * item outside of range causes that 'undefined' is returned
+     *
+     * @return item at given index, undefined outside of range
+     */
 
     Value operator[](std::size_t idx) const {return Value(_ptr->get(idx));}
+    ///Access to item by key name
+    /**
+     * @param name name of key to access
+     * @return item at given key, undefined if not exists
+     */
     Value operator[](std::string_view name) const {return Value(_ptr->get(name));}
 
     class iterator;
@@ -249,62 +327,209 @@ public:
      */
     void merge(const Object &obj, Merge merge = Merge::flat, const Value &unset_item = Value());
 
-    template<typename Fn>
-    Value map(Fn &&fn) const;
 
-    template<typename Fn>
-    Value map_object(Fn &&fn) const;
-
-    template<typename Fn, typename T>
-    T reduce(Fn &&fn, T &&initial) const {
-        return std::accumulate(begin(), end(), std::forward<T>(initial), std::forward<Fn>(fn));
-    }
-
-    template<typename Fn>
-    Value filter(Fn &&fn) const {
-        return map([&](const Value &x){
-            if (fn(x)) return x;
-            else return Value();
-        });
-    }
-
-    template<typename Fn>
-    Value filter_object(Fn &&fn) const {
-        return map_to_object([&](const Value &x){
-            if (fn(x)) return x;
-            else return Value();
-        });
-    }
-
+    ///Transform items in an array through a function
+    /**
+     * @param fn function
+     *
+     * @note transform is performed in place (variable is changed)
+     *
+     * @see map
+     */
     template<typename Fn>
     void transform(Fn &&fn) {
         *this = map(std::forward<Fn>(fn));
     }
 
+    ///Transform values of object
+    /**
+     * @param fn function
+     *
+     * @note transform is performed in place (variable is changed)
+     *
+     * @note returning 'undefined' from the map causes deletion if the item
+     */
     template<typename Fn>
     void transform_object(Fn &&fn) {
         *this = map_to_object(std::forward<Fn>(fn));
     }
+
+    ///Transform an array and executes flatten on transformed result
+    /**
+    * @param fn map function
+    *
+    * @note transform is performed in place (variable is changed)
+    *
+    * @note returning 'undefined' from the map causes deletion if the item
+    *
+    * @see map, flatten
+    */
 
     template<typename Fn>
     void transform_flatten(Fn &&fn) {
         *this = map(std::forward<Fn>(fn)).flatten();
     }
 
+    ///Push item to and array
+    /**
+     * @param item new items
+     *
+     * @note function can be slow for pushing items by one by. It is much faster to use
+     * std::vector and then convert that vector to Value
+     */
     void push(const Value &item);
 
+    ///Pop last item from array
+    Value pop() {
+        Value x = back();
+        *this = slice(0,-1);
+        return x;
+    }
+
+    ///Retrieve last item from array
+    Value back() const {
+        return (*this)[size()-1];
+    }
+
+    ///Splice function (from javascript)
+    Value splice(std::ptrdiff_t start, std::ptrdiff_t delete_count);
+
+    ///Splice function (from javascript)
+    Value splice(std::ptrdiff_t start, std::ptrdiff_t delete_count, const Array &new_items);
+
+    ///Splice function (from javascript)
+    Value splice(std::ptrdiff_t start) {
+        Value ret = slice(start);
+        *this = slice(0,start);
+        return ret;
+    }
+    ///Append an array to array - in place
     void append(const Array &arr);
+
+
+    ///Map array to another array
+    /**
+     * @param fn mapping function
+     * @return mapped array, original variable doesn't change
+     *
+     * @note returning 'undefined' from the map causes deletion if the item
+     */
+    template<typename Fn>
+    Value map(Fn &&fn) const;
+
+    ///Map values of object to another object
+    /**
+     * @param fn mapping function
+     * @return mapped object, original variable doesn't change
+     *
+     * @note returning 'undefined' from the map causes deletion if the item
+     */
+    template<typename Fn>
+    Value map_object(Fn &&fn) const;
+
+    ///Reduce function
+    /**
+     * @param fn reduce function (binary operator)
+     * @param initial initial value
+     * @return result of reduction
+     */
+    template<typename Fn, typename T>
+    T reduce(Fn &&fn, T &&initial) const {
+        return std::accumulate(begin(), end(), std::forward<T>(initial), std::forward<Fn>(fn));
+    }
+
+    ///Filters array or object
+    /**
+     * @param fn function which returns true to keep value, or false to delete value
+     * @return filtered array or object
+     */
+    template<typename Fn>
+    Value filter(Fn &&fn) const {
+        if (is_object()) {
+            return map_to_object([&](const Value &x){
+                if (fn(x)) return x;
+                else return Value();
+            });
+        } else {
+            return map([&](const Value &x){
+                if (fn(x)) return x;
+                else return Value();
+            });
+        }
+    }
+
+
+    ///Slice of array (same as javascript)
+    /**
+     *
+     * @param from starting index (included). If negative, it is counted from end
+     * @param to ending index (excluded) . If negative, it is counted from end
+     * @return slice of array
+     *
+     * @note slicing array creates special object 'slice' which refers original array. Even
+     * if the original array is no longer reference until there is at least one slice, whole
+     * array is still kept in memory
+     */
 
     Value slice(std::ptrdiff_t from, std::ptrdiff_t to) const;
 
+    ///Slice of array (same as javascript)
+    /**
+     *
+     * @param from starting index (included). If negative, it is counted from end
+     * @return slice of array from given index to its end
+     */
+    Value slice(std::ptrdiff_t from) const {
+        return slice(from, size());
+    }
 
+    ///Joins this array and another array
+    /**
+     * @param other other array
+     * @return this+other (joined)
+     */
+    Value concat(const Array &other) const;
+
+    ///Join several arrays into one
+    /**
+     * @param parts arrays to join
+     * @return joined array
+     */
+    static Value concat(const std::initializer_list<Array> &parts);
+
+    ///Converts two-dimensional array into single dimensional array
+    /**
+     * @return returns flatten array.
+     *
+     * @code
+     * [1,2,3] -> [1,2,3]
+     * [1,[10,20,30],2,3] -> [1,10,20,30,2,3]
+     * [1,[2,[3,4],5],6] -> [1,2,[3,4],5,6]
+     * @endcode
+     *
+     * @note map+flatten is good way to extend array during mapping.
+     */
     Value flatten() const;
 
 
-
+    ///Serialize Value to JSON
+    /**
+     * @param fn function which receives characters to be stored to the output
+     * @param ot specifies output type
+     *
+     * @see OutputType
+     */
     template<typename Fn>
     void serialize(Fn &&fn, OutputType ot = OutputType::ascii) const;
 
+
+    ///Serializes Value to string
+    /**
+     * @param ot specifies output type
+     * @return serialized value
+     *
+     * @see OutputType
+     */
     std::string to_string(OutputType ot = OutputType::utf8) const {
         std::string out;
         serialize([&](char c){
@@ -313,15 +538,40 @@ public:
         return out;
     }
 
+    ///Serialize Value to an output stream
+    /**
+     * @param stream an output stream
+     * @param ot specifies output type
+     *
+     * @see OutputType
+     */
     void to_stream(std::ostream &stream, OutputType ot = OutputType::ascii) {
         serialize([&](char c){stream.put(c);}, ot);
     }
 
+    ///Parse Value from input
+    /**
+     * @param fn function which returns characters. For EOF, it could return -1
+     * @return parsed Value
+     * @exception ParseError parse error
+     */
     template<typename Fn>
     static Value parse(Fn &&fn);
 
+    ///Parse Value from string
+    /**
+     * @param str JSON string
+     * @return parsed Value
+     * @exception ParseError parse error
+     */
     static Value from_string(const std::string_view &str);
 
+    ///Parse Value from an input stream
+    /**
+     * @param str JSON in stream
+     * @return parsed Value
+     * @exception ParseError parse error
+     */
     static Value from_stream(std::istream &stream) {
         return parse([&]{return stream.get();});
     }
@@ -332,6 +582,7 @@ protected:
 
 };
 
+///Iterator
 class Value::iterator {
 public:
     using value_type = Value;
@@ -621,15 +872,7 @@ inline void kjson::Value::merge(const Object &obj, Merge merge, const Value &uns
 }
 
 inline void kjson::Value::append(const Array &arr) {
-    std::size_t sz = size() + Value(arr).size();
-    _ptr = Node::new_array(sz, [&](ContBuilder &bld){
-        for (const Value &x : *this) {
-            bld.push_back(x.get_handle());
-        }
-        for (const Value &x: Value(arr)) {
-            bld.push_back(x.get_handle());
-        }
-    });
+    _ptr = concat(arr).get_handle();
 }
 
 inline void kjson::Value::push(const Value &x) {
@@ -642,8 +885,55 @@ inline void kjson::Value::push(const Value &x) {
     });
 }
 
+inline kjson::Value kjson::Value::concat(const Array &other) const {
+    std::size_t sz = size() + other.size();
+    return Value( Node::new_array(sz, [&](ContBuilder &bld){
+        for (const Value &x : *this) {
+            bld.push_back(x.get_handle());
+        }
+        for (const Value &x: other) {
+            bld.push_back(x.get_handle());
+        }
+    }));
+}
+
+inline kjson::Value kjson::Value::concat(const std::initializer_list<Array> &parts) {
+    std::size_t sz = std::accumulate(parts.begin(), parts.end(), std::size_t(0),
+                                     [](std::size_t a, const Value &b) {
+        return b.is_container()?a+b.size():a+1;
+    });
+    return Value(Node::new_array(sz, [&](ContBuilder &bld) {
+        for (const Value &x: parts) {
+            if (x.is_container()) {
+                for (const Value &y: x) {
+                    bld.push_back(y.get_handle());
+                }
+            } else {
+                bld.push_back(x.get_handle());
+            }
+        }
+    }));
+}
+
+
 inline kjson::Value kjson::Value::slice(std::ptrdiff_t from, std::ptrdiff_t to) const {
-    return Value(); //todo
+    SliceInfo slc = _ptr->get_slice_info();
+    auto beg = from<0?std::max<std::ptrdiff_t>(0,slc.size+from):std::min<std::ptrdiff_t >(from, slc.size);
+    auto end = to<0?std::max<std::ptrdiff_t >(0,slc.size+to):std::min<std::ptrdiff_t >(to, slc.size);
+    if (beg >= end) return Value(Array());
+    else {
+        auto sz = end - beg;
+        auto ofs = beg + slc.offset;
+        return Value(Node::new_slice((SliceInfo{slc.owner, static_cast<std::size_t>(ofs), static_cast<std::size_t>(sz)})));
+    }
+}
+
+inline kjson::Array kjson::Value::get_array() const {
+    return Array::from_value(*this);
+}
+
+inline kjson::Object kjson::Value::get_object() const {
+    return Object::from_value(*this);
 }
 
 kjson::Value kjson::Value::flatten() const {
@@ -675,6 +965,21 @@ inline kjson::Value kjson::Value::map_object(Fn &&fn) const {
     return Object(Object::from_value(*this), std::forward<Fn>(fn));
 
 }
+
+kjson::Value kjson::Value::splice(std::ptrdiff_t start, std::ptrdiff_t delete_count) {
+    if (delete_count == 0) return *this;
+    Value lead = slice(start);
+    Value trail = slice(lead.size()+delete_count);
+    return lead.concat(Array::from_value(trail));
+}
+
+kjson::Value kjson::Value::splice(std::ptrdiff_t start, std::ptrdiff_t delete_count, const Array &new_items) {
+    if (delete_count == 0) return *this;
+    Array lead = Array::from_value(slice(start));
+    Array trail = Array::from_value(slice(lead.size()+delete_count));
+    return Value::concat({Array::from_value(lead), new_items, Array::from_value(trail)});
+}
+
 
 
 inline kjson::Value::Value(const std::initializer_list<KeyValue > &obj)

@@ -16,6 +16,7 @@
 #include "../value.h"
 #include "../serializer.h"
 #include "../parser.h"
+#include "../user_defined.h"
 
 #include <memory>
 #include <fstream>
@@ -213,6 +214,14 @@ int testMain(bool showOutput) {
 		Value v = -0.000000075;
 		v.to_stream(out);
 	};
+    tst.test("Serialize.binary","[\"\",\"Zg==\",\"Zm8=\",\"Zm9v\",\"Zm9vYg==\",\"Zm9vYmE=\",\"Zm9vYmFy\"]") >> [](std::ostream &out) {
+        //Tests whether binary values are properly encoded to base64
+        std::string_view v[] = {"","f","fo","foo","foob","fooba","foobar"};
+        Value res(Array(v,[](const std::string_view &str)->Value {
+            return Binary(str);
+        }));
+        res.to_stream(out);
+    };
 	tst.test("Serialize.objects", "{\"a\":7,\"b\":{\"a\":2,\"b\":{\"a\":3,\"b\":{\"a\":4}},\"c\":6}}") >> [](std::ostream &out) {
 		Value v = Value::from_string("{\"a\":7,\"b\":{\"a\":2,\"b\":{\"a\":3,\"b\":{\"a\":4}},\"c\":6}}");
 		v.to_stream(out);
@@ -1202,6 +1211,12 @@ int main(int c, char **a) {
 	if (!showOutput && r == 0) {
 		std::cout << "add -v to display output of each test" << std::endl;
 	}
+
+	Value k = create_value(std::string("Test"));
+	const std::string *k2 = cast_value<std::string>(k);
+	std::cout << *k2 << std::endl;
+
+
 #ifdef _WIN32
 	_CrtDumpMemoryLeaks();
 #endif

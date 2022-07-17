@@ -34,7 +34,12 @@ enum class ValueType {
      * but always carried with values, if they are picked from object container. You can
      * retrieve key by function get_key(), or bind different key by calling set_key()
      */
-    key
+    key,
+    ///allows to create user defined value node
+    /**
+     * Note - user defined values can't be serialized and parsed (not yet)
+     */
+    user_defined
 };
 
 enum class OutputType {
