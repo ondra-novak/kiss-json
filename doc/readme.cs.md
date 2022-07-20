@@ -92,7 +92,7 @@ Value objekt = {
    };
 ```
 
-### Konstruce pole
+### Konstrukce pole
     
 Pole třeba konstruovat pomocí třídy `Array`, která dědí `Value`
 
@@ -253,9 +253,9 @@ a.transform([](Value x){return x.get_int() == 2?Value():x;}); //remove value 2
 Výsledkem je pole [1,3,4,5]
 
 
-### Value::trnsform_flatten
+### Value::transform_flatten
 
-Funkce `trnsform_flatten` pracuje stejně jako `transform` pouze s tou změnou, že pokud je výsledkem 2D pole, je převedeno na 1D pole (obecně je vždy snížen rozměr výsledného pole o 1, tedy 3D pole je sníženo na 2D, atd) - Cílem této úpravy je umožnit během transformace přepsat jeden prvek vícero prvky
+Funkce `transform_flatten` pracuje stejně jako `transform` pouze s tou změnou, že pokud je výsledkem 2D pole, je převedeno na 1D pole (obecně je vždy snížen rozměr výsledného pole o 1, tedy 3D pole je sníženo na 2D, atd) - Cílem této úpravy je umožnit během transformace přepsat jeden prvek vícero prvky
 
 ```
 Value a = {1,2,3,4,5};
@@ -497,7 +497,7 @@ Proměnná `Value` je ve skutečnosti pouze ukazatelem na instance třídy `Node
 
 ```
      Value
-┌──────────────┐
+┌──────────────┐             Node
 │              │        ┌──────────────┐
 │       ───────┼──────► │   _cntr      │ ref.counter
 │              │        ├──────────────┤
@@ -514,5 +514,178 @@ Proměnná `Value` je ve skutečnosti pouze ukazatelem na instance třídy `Node
                         ~   area       ~
                         │              │
                         └──────────────┘
+```
+### struktura null a undefined
+
+```
+   Node
+┌──────────┐
+│  _cntr   │
+├──────────┤
+│  _type   │  null / undefined
+├──────────┤
+│          │
+│          │
+│  unused  │
+│          │
+│          │
+└──────────┘
+```
+Hodnoty null a undefined jsou předalokované a každá je tedy singletonem
+
+### struktura boolean
+
+```
+   Node
+┌──────────┐
+│  _cntr   │
+├──────────┤
+│  _type   │  boolean
+├──────────┤
+│true/false│
+├──────────┤
+│  unused  │
+│          │
+│          │
+└──────────┘
+```
+Obě hodnoty (true/false) jsou uložené jako singleton
+
+### čísla a řetězce
+
+```
+          Node
+    ┌───────────────┐
+    │     _cntr     │
+    ├───────────────┤
+    │     _type     │ number/string
+    ├───────────────┤
+    │               │
+┌───┼─ string_view ─┤
+│   │               │
+│   ├───────────────┤
+│   │    encoding   │ utf-8/binary
+│   ├───────────────┤
+└──►│               │
+    │   text-       │
+    ~     -buffer   ~
+    │               │
+    │               │
+    └───────────────┘
+```
+Čísla se ukládají jako řetězce. Samotný textový obsah je uložen ve variabilní části
+
+### pole a objekty
+
+```
+          Node
+    ┌───────────────┐
+    │     _cntr     │
+    ├───────────────┤
+    │     _type     │ array/object
+    ├───────────────┤                          ┌────────┐
+┌───┤  _ptr begin   │                    ┌────►│        │
+│   ├───────────────┤                    │     │  Node  │
+│   │    _count     │                    │     │        │
+│   ├───────────────┤                    │     └────────┘
+│   │     nullptr   │                    │
+│   ├───────────────┤                    │     ┌────────┐
+└──►│  1st PNode    ├────────────────────┘   ┌►│        │
+    ├───────────────┤                        │ │  Node  │
+    │  2nd PNode    ├────────────────────────┘ │        │
+    ├───────────────┤                          └────────┘
+    │  3th PNode    ├────────────────────┐
+    ├───────────────┤                    │     ┌────────┐
+    │               │                    └────►│        │
+    ~     .....     ~                          │  Node  │
+    │               │                          │        │
+    ├───────────────┤                          └────────┘
+    │  nth PNode    │
+    └───────────────┘
+```
+Prvky kontejneru se ukládají ve variabilně veliké oblasti. Pro objekty platí, že klíče jsou uloženy spolu s hodnotou a tedy nejsou uloženy extra v kontejneru. Rozdíl mezi polem a objektem je tedy pouze ve způsobu řazení a hledání dat
+
+Specifický způsob uložení je ukládání `slices`, tedy podrozsahy kontejnerů
+
+```
+      Node
+   ┌─────────┐
+   │ _cntr   │
+   ├─────────┤
+   │ _type   │  array/object
+   ├─────────┤
+┌──┤ _ptrbeg │
+│  ├─────────┤
+├──┤ _count  │                Node
+│  ├─────────┤          ┌───────────────┐
+│  │ _owner  ├─────────►│     _cntr     │
+│  └─────────┘          ├───────────────┤
+│                       │     _type     │ array/object
+│                       ├───────────────┤               ┌────────┐
+│                   ┌───┤  _ptr begin   │         ┌────►│        │
+│                   │   ├───────────────┤         │     │  Node  │
+│                   │   │    _count     │         │     │        │
+│                   │   ├───────────────┤         │     └────────┘
+│                   │   │     nullptr   │         │
+│                   │   ├───────────────┤         │     ┌────────┐
+│                   └──►│  1st PNode    ├─────────┘   ┌►│        │
+│                       ├───────────────┤             │ │  Node  │
+└────────────────┬─────►│  2nd PNode    ├─────────────┘ │        │
+                 │      ├───────────────┤               └────────┘
+                 │      │  3th PNode    ├─────────┐
+                 │      ├───────────────┤         │     ┌────────┐
+                 │      │               │         └────►│        │
+                 │      ~     .....     ~               │  Node  │
+                 └────► │               │               │        │
+                        ├───────────────┤               └────────┘
+                        │  nth PNode    │
+                        └───────────────┘
+```
+
+### Hodnoty s přidruženým klíčem
+
+Klíč je samostatný objekt, který se odkazuje na hodnotu, ke které je přidružen. Z hlediska rozhraní se chová transparentně, tedy jakékoliv operace s klíčem se forwardují na hodnotu, jediný způsob jak přistoupit přímo na klíč je přes `get_key` a `bind_key`
+
+```
+          Node
+    ┌───────────────┐
+    │     _cntr     │
+    ├───────────────┤
+    │     _type     │ key
+    ├───────────────┤               ┌────────┐
+    │               │         ┌────►│        │
+┌───┼─ string_view ─┤         │     │  Node  │
+│   │               │         │     │        │
+│   ├───────────────┤         │     └────────┘
+│   │     PNode     ├─────────┘
+│   ├───────────────┤
+└──►│               │
+    │   text-       │
+    │      buffer   │
+    ~               ~
+    │               │
+    └───────────────┘
+```
+
+### Uživatelem definovaný typ
+```
+      Node
+┌───────────────┐
+│     _cntr     │
+├───────────────┤
+│     _type     │ user_defined
+├───────────────┤
+│  _type_desc   ├─────┐     ┌────────────────┐
+├───────────────┤     └────►│                │
+│  void *_data  ├───┐       │                │
+├───────────────┤   │       │  type          │
+│     _size     │   │       │    descriptor  │
+├───────────────┤   │       │                │
+│               │◄──┘       │  (statically   │
+│   optional    │           │     allocated) │
+│   varaiable   │           │                │
+~   sized area  ~           │                │
+│               │           │                │
+└───────────────┘           └────────────────┘
 ```
 
