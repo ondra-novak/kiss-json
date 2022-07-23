@@ -331,6 +331,19 @@ inline void Value::serialize(Fn &&fn, OutputType ot) const {
     }
 }
 
+
+std::string Value::to_string(OutputType ot = OutputType::utf8) const {
+    std::string out;
+    serialize([&](char c){
+        out.push_back(c);
+    }, ot);
+    return out;
+}
+
+void Value::to_stream(std::ostream &stream, OutputType ot = OutputType::ascii) {
+    serialize([&](char c){stream.put(c);}, ot);
+}
+
 template<std::size_t n>
 inline std::size_t Serializer::read(std::array<char, n> &buffer) {
     std::size_t idx = 0;
@@ -342,6 +355,7 @@ inline std::size_t Serializer::read(std::array<char, n> &buffer) {
         i = get_next();
     }
     return idx;
+
 }
 
 
@@ -349,3 +363,5 @@ inline std::size_t Serializer::read(std::array<char, n> &buffer) {
 
 
 #endif /* SERIALIZER_H_ */
+
+

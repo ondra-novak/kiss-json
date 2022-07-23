@@ -9,6 +9,7 @@
 #define KISSJSON_VALUE_H_
 
 #include "core.h"
+#include "base64.h"
 
 #include <iostream>
 #include <numeric>
@@ -530,13 +531,7 @@ public:
      *
      * @see OutputType
      */
-    std::string to_string(OutputType ot = OutputType::utf8) const {
-        std::string out;
-        serialize([&](char c){
-            out.push_back(c);
-        }, ot);
-        return out;
-    }
+    std::string to_string(OutputType ot = OutputType::utf8) const;
 
     ///Serialize Value to an output stream
     /**
@@ -545,10 +540,7 @@ public:
      *
      * @see OutputType
      */
-    void to_stream(std::ostream &stream, OutputType ot = OutputType::ascii) {
-        serialize([&](char c){stream.put(c);}, ot);
-    }
-
+    void to_stream(std::ostream &stream, OutputType ot = OutputType::ascii);
     ///Parse Value from input
     /**
      * @param fn function which returns characters. For EOF, it could return -1
@@ -572,9 +564,7 @@ public:
      * @return parsed Value
      * @exception ParseError parse error
      */
-    static Value from_stream(std::istream &stream) {
-        return parse([&]{return stream.get();});
-    }
+    static Value from_stream(std::istream &stream);
 
 
 protected:
@@ -979,7 +969,6 @@ kjson::Value kjson::Value::splice(std::ptrdiff_t start, std::ptrdiff_t delete_co
     Array trail = Array::from_value(slice(lead.size()+delete_count));
     return Value::concat({Array::from_value(lead), new_items, Array::from_value(trail)});
 }
-
 
 
 inline kjson::Value::Value(const std::initializer_list<KeyValue > &obj)
