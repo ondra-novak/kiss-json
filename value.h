@@ -284,6 +284,9 @@ public:
      */
     void unbind_key() {_ptr = _ptr->unset_key();}
 
+
+    Value strip_key() {return Value(_ptr->unset_key());}
+
     ///Access to item by index in a container
     /**
      * @param idx index to item, items are zero-base indexed. This applied for both
