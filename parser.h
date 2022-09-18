@@ -661,11 +661,11 @@ Value Value::parse(Fn &&fn) {
     return p.get_result();
 }
 
-Value Value::from_string(const std::string_view &str) {
+inline Value Value::from_string(const std::string_view &str) {
     return Parser::parse_string(str);
 }
 
-Value Value::from_stream(std::istream &stream) {
+inline Value Value::from_stream(std::istream &stream) {
     return parse([&]{return stream.get();});
 }
 

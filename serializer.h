@@ -332,7 +332,7 @@ inline void Value::serialize(Fn &&fn, OutputType ot) const {
 }
 
 
-std::string Value::to_string(OutputType ot = OutputType::utf8) const {
+std::string Value::to_string(OutputType ot) const {
     std::string out;
     serialize([&](char c){
         out.push_back(c);
@@ -340,7 +340,7 @@ std::string Value::to_string(OutputType ot = OutputType::utf8) const {
     return out;
 }
 
-void Value::to_stream(std::ostream &stream, OutputType ot = OutputType::ascii) {
+void Value::to_stream(std::ostream &stream, OutputType ot) {
     serialize([&](char c){stream.put(c);}, ot);
 }
 

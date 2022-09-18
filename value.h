@@ -929,7 +929,7 @@ inline kjson::Object kjson::Value::get_object() const {
     return Object::from_value(*this);
 }
 
-kjson::Value kjson::Value::flatten() const {
+inline kjson::Value kjson::Value::flatten() const {
     std::size_t sz = reduce([](std::size_t n, const Value &v){
         if (v.is_container()) return n+v.size();
         else return n+1;
@@ -959,14 +959,14 @@ inline kjson::Value kjson::Value::map_object(Fn &&fn) const {
 
 }
 
-kjson::Value kjson::Value::splice(std::ptrdiff_t start, std::ptrdiff_t delete_count) {
+inline kjson::Value kjson::Value::splice(std::ptrdiff_t start, std::ptrdiff_t delete_count) {
     if (delete_count == 0) return *this;
     Value lead = slice(start);
     Value trail = slice(lead.size()+delete_count);
     return lead.concat(Array::from_value(trail));
 }
 
-kjson::Value kjson::Value::splice(std::ptrdiff_t start, std::ptrdiff_t delete_count, const Array &new_items) {
+inline kjson::Value kjson::Value::splice(std::ptrdiff_t start, std::ptrdiff_t delete_count, const Array &new_items) {
     if (delete_count == 0) return *this;
     Array lead = Array::from_value(slice(start));
     Array trail = Array::from_value(slice(lead.size()+delete_count));

@@ -723,7 +723,7 @@ inline bool PNode::operator !=(const PNode &other) const {
     return _ptr != other._ptr;
 }
 
-PNode Node::new_user_value(const UserDefinedValueTypeDesc &type, void *args) {
+inline PNode Node::new_user_value(const UserDefinedValueTypeDesc &type, void *args) {
     NodeReserveRequest<char> req;
     req.count = type.get_required_size?type.get_required_size(args):0;
     return PNode(new(req) Node(type, args, req));
