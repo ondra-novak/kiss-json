@@ -2,6 +2,5 @@ Makefile
 CMakeFiles
 CMakeCache.txt
 cmake_install.cmake
-/src
 /bin
 *.o
