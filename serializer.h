@@ -20,7 +20,8 @@ public:
     Serializer(const Value &v, OutputType ot = OutputType::utf8)
         :_v(v),_ot(ot) {}
 
-    Serializer(const Serializer &v) = delete;
+    ///Copy constructor just copies initial parameters, not the state itself
+    Serializer(const Serializer &v):_v(v._v),_ot(v._ot) {}
     Serializer &operator=(const Serializer &v) = delete;
 
     int get_next();
@@ -51,6 +52,7 @@ protected:
         binary_base64_trailer2,
         binary_base64_end,
         begin_key,
+        done
     };
 
 
@@ -215,7 +217,10 @@ inline int Serializer::get_next() {
                 _state = State::analyze;
                 return ':';
             }
-            if (_path.empty()) return -1;
+            if (_path.empty()) {
+                _state = State::done; 
+                return -1;
+            }
             auto &iter = _path.back();
             Value cont = iter.container();
             ++iter;

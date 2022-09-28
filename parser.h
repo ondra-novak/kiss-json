@@ -75,8 +75,8 @@ class Parser {
 public:
 
     Parser() = default;
-
-    Parser(const Parser &) = delete;
+    ///Copy constructor can't copy internal state, but we still need to create new object
+    Parser(const Parser &) {}
     Parser &operator=(const Parser &) = delete;
 
     ///Puts char to the parser
