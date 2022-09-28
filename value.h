@@ -53,6 +53,8 @@ public:
     Value(const char *c):_ptr(Node::new_string(std::string_view(c), StringType::utf8)) {}
     ///Construct string value
     Value(const std::string_view &a):_ptr(Node::new_string(a, StringType::utf8)) {}
+    ///Construct string value
+    Value(const std::string &a):_ptr(Node::new_string(a, StringType::utf8)) {}
     ///Construct a number
     Value(int a):_ptr(Node::new_number(a)) {}
     ///Construct a number
@@ -758,6 +760,9 @@ public:
      * Because Binary inherits Value, the instance can be used anywhere the Value is expected
      */
     Binary(const std::string_view &binary_data)
+        :Value(binary_data, StringType::binary) {}
+
+    Binary(const std::string &binary_data)
         :Value(binary_data, StringType::binary) {}
 
     ///Constructs binary from a Value
