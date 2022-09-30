@@ -9,7 +9,7 @@
 #define KISSJSON_PARSER_H_
 
 #include "value.h"
-
+#include <vector>
 #include <sstream>
 
 namespace kjson {

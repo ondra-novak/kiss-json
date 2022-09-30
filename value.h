@@ -440,9 +440,7 @@ public:
      * @return result of reduction
      */
     template<typename Fn, typename T>
-    T reduce(Fn &&fn, T &&initial) const {
-        return std::accumulate(begin(), end(), std::forward<T>(initial), std::forward<Fn>(fn));
-    }
+    T reduce(Fn &&fn, T &&initial) const;
 
     ///Filters array or object
     /**
@@ -952,6 +950,12 @@ inline kjson::Value kjson::Value::flatten() const {
         }
     }));
 }
+
+template<typename Fn, typename T>
+inline T kjson::Value::reduce(Fn &&fn, T &&initial) const {
+    return std::accumulate(begin(), end(), std::forward<T>(initial), std::forward<Fn>(fn));
+}
+
 
 template<typename Fn>
 inline kjson::Value kjson::Value::map(Fn &&fn) const {

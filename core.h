@@ -132,7 +132,7 @@ protected:
         Container(PNode *items, std::size_t count): _items(items), _count(count),_owner(nullptr) {}
         Container(PNode owner, PNode *items, std::size_t count):_items(items), _count(count), _owner(owner) {}
         Container(const Container &other) = delete;
-        Container(Container &&other):_items(other._items), _count(other._count),_owner(std::move(_owner)) {
+        Container(Container &&other):_items(other._items), _count(other._count),_owner(std::move(other._owner)) {
             other._items = 0;;
             other._count = 0;
         }
@@ -387,7 +387,7 @@ public:
 
     static PNode new_number(const std::string_view &txt) {
         if (txt.empty()) return shared_zero();
-        if (std::isspace(txt[0])) return new_number(txt.substr(1));\
+        if (std::isspace(txt[0])) return new_number(txt.substr(1));
         if (txt == "0") return shared_zero();
         NodeReserveRequest<char> req{txt.length()};
         return PNode(new(req) Node(__init_number, txt, false, req));

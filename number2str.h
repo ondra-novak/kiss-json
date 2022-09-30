@@ -373,11 +373,19 @@ protected:
     std::size_t pos = 0;
 };
 
-
+static constexpr int log2(int v) {
+    int c = 1;
+    while (v/2) v = v/2;
+    return c;
+}
+static constexpr int logn(int v, int z) {
+    return log2(v) / log2(z) + 1;
+}
 
 template<int base, typename Number>
 auto unsigned_to_string(const Number &n) {
-    StrBuff<static_cast<std::size_t>(std::numeric_limits<Number>::digits*std::log(2)/std::log(base)+4)> out;
+    constexpr std::size_t sz = std::numeric_limits<Number>::digits*logn(2,base) +4; 
+    StrBuff<sz> out;
     _details::unsignedToString(n, [&](char c){
             out.push_back(c);
         });
@@ -386,7 +394,8 @@ auto unsigned_to_string(const Number &n) {
 
 template<int base, typename Number>
 auto signed_to_string(const Number &n) {
-    StrBuff<static_cast<std::size_t>(std::numeric_limits<Number>::digits*std::log(2)/std::log(base)+4)> out;
+    constexpr std::size_t sz = std::numeric_limits<Number>::digits*logn(2,base) +4; 
+    StrBuff<sz> out;
     _details::unsignedToString(n, [&](char c){
             out.push_back(c);
         });

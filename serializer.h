@@ -8,6 +8,7 @@
 #ifndef KISSJSON_SERIALIZER_H_
 #define KISSJSON_SERIALIZER_H_
 
+#include <vector>
 #include <array>
 #include "base64.h"
 #include "value.h"
