@@ -321,7 +321,7 @@ inline int Serializer::read_unicode(int c) {
     return out;
 }
 
-int Serializer::hex_char(int c) {
+inline int Serializer::hex_char(int c) {
     constexpr const char *h = "0123456789ABCDEF";
     return h[c & 0xF];
 }
@@ -337,7 +337,7 @@ inline void Value::serialize(Fn &&fn, OutputType ot) const {
 }
 
 
-std::string Value::to_string(OutputType ot) const {
+inline std::string Value::to_string(OutputType ot) const {
     std::string out;
     serialize([&](char c){
         out.push_back(c);
@@ -345,7 +345,7 @@ std::string Value::to_string(OutputType ot) const {
     return out;
 }
 
-void Value::to_stream(std::ostream &stream, OutputType ot) {
+inline void Value::to_stream(std::ostream &stream, OutputType ot) {
     serialize([&](char c){stream.put(c);}, ot);
 }
 
